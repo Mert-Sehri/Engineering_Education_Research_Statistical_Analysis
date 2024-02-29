@@ -1,7 +1,7 @@
 import pandas as pd
-from scipy import stats
 from docx import Document
 from docx.shared import Inches
+import matplotlib.pyplot as plt
 
 # Load the data from the CSV file
 data = pd.read_csv("GNG4120.csv")
@@ -9,48 +9,62 @@ data = pd.read_csv("GNG4120.csv")
 # Drop the 'Student ID' column
 data.drop(columns=['Student ID'], inplace=True)
 
-# Calculate mean and standard deviation for each question
-mean_values = data.mean()
-std_dev_values = data.std()
+# Calculate observed values (standard deviation)
+observed_values = data.std(axis=0)
 
-# Perform a chi-square test for each pair of questions (assuming they are categorical variables)
-chi_square_results = pd.DataFrame(index=data.columns, columns=data.columns)
-
-for col1 in data.columns:
-    for col2 in data.columns:
-        contingency_table = pd.crosstab(data[col1], data[col2])
-        chi2, p, _, _ = stats.chi2_contingency(contingency_table)
-        chi_square_results.loc[col1, col2] = p
+# Calculate predicted values (mean)
+predicted_values = data.mean(axis=0)
 
 # Create a Word document
 doc = Document()
 doc.add_heading('Statistical Analysis', level=1)
 
-# Add mean and standard deviation table
+# Add mean and standard deviation table for all questions
 doc.add_heading('Mean and Standard Deviation', level=2)
-mean_std_table = doc.add_table(rows=len(mean_values)+1, cols=3)
+mean_std_table = doc.add_table(rows=len(observed_values)+1, cols=2)
 hdr_cells = mean_std_table.rows[0].cells
 hdr_cells[0].text = 'Question'
-hdr_cells[1].text = 'Mean'
-hdr_cells[2].text = 'Standard Deviation'
+hdr_cells[1].text = 'Mean ± Std Deviation'
 
-for i, (question, mean_val, std_dev_val) in enumerate(zip(mean_values.index, mean_values, std_dev_values)):
+for i, (question, observed_val) in enumerate(zip(observed_values.index, observed_values)):
     row_cells = mean_std_table.rows[i+1].cells
     row_cells[0].text = question
-    row_cells[1].text = f"{mean_val:.2f}"
-    row_cells[2].text = f"{std_dev_val:.2f}"
+    row_cells[1].text = f"{predicted_values[i]:.2f} ± {observed_val:.2f}"
 
-# Add chi-square p-values table
-doc.add_heading('Chi-square p-values', level=2)
-chi_square_table = doc.add_table(rows=len(data.columns)+1, cols=len(data.columns)+1)
-hdr_cells = chi_square_table.rows[0].cells
-for i, col in enumerate(data.columns):
-    hdr_cells[i+1].text = col
-for i, (index, row) in enumerate(chi_square_results.iterrows()):
-    row_cells = chi_square_table.rows[i+1].cells
-    row_cells[0].text = index
-    for j, p_value in enumerate(row):
-        row_cells[j+1].text = f"{p_value:.4f}"
+# Ensure all columns are considered as questions
+num_questions = len(data.columns)
+
+# Plot all questions with both observed and predicted counts
+fig, ax = plt.subplots(figsize=(12, 6))
+labels = data.columns
+x = range(1, len(labels)+1)  # Changing x-axis to start from 1
+bar_width = 0.35
+bars1 = ax.bar(x, observed_values, width=bar_width, label='Standard Deviation')
+bars2 = ax.bar([i + bar_width for i in x], predicted_values, width=bar_width, label='Mean', alpha=0.5)
+ax.set_xticks(x)
+ax.set_xticklabels(x, fontsize=16)  # Setting x-axis labels to question numbers
+ax.legend(fontsize=16)
+ax.set_xlabel('Question Numbers', fontsize=16)  # Changing x-axis label to "Question Numbers"
+ax.set_ylabel('Answers (Strongly Disagree-> Strongly Agree)', fontsize=16)
+ax.tick_params(axis='both', which='major', labelsize=16)
+ax.set_ylim(0, 5)  # Set y-axis limit to 5
+
+# Annotate each bar with the corresponding value
+for bar in bars1 + bars2:
+    height = bar.get_height()
+    ax.annotate(f'{height:.2f}',
+                xy=(bar.get_x() + bar.get_width() / 2, height),
+                xytext=(0, 3),  # 3 points vertical offset
+                textcoords="offset points",
+                ha='center', va='bottom', fontsize=16)
+
+plt.tight_layout()
+
+# Add the chart to the Word document
+doc.add_picture('observed_vs_predicted_values_all_questions.png', width=Inches(6))
 
 # Save the document
 doc.save('statistical_analysis.docx')
+
+# Show the figure
+plt.show()
